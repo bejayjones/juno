@@ -131,11 +131,13 @@ internal/inspection/domain/                 Inspection aggregate, 10-system cata
 internal/scheduling/domain/                 Appointment aggregate
 internal/identity/domain/                   Inspector, Company, Client aggregates
 internal/reporting/domain/                  Report aggregate, Delivery entity
+internal/platform/db/                       DB wrapper, WithTx, embedded migration runner
+internal/platform/db/migrations/sqlite/     001_initial_schema.sql (all tables + indexes)
 Makefile
 .gitignore
 ```
 
-**Next up: Phase 3 — Database Infrastructure.** See `ROADMAP.md` for full phase status.
+**Next up: Phase 4 — Identity Context.** See `ROADMAP.md` for full phase status.
 
 ## Testing Approach
 
