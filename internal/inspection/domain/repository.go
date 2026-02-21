@@ -12,6 +12,9 @@ type InspectionRepository interface {
 	FindByID(ctx context.Context, id InspectionID) (*Inspection, error)
 	FindByAppointmentID(ctx context.Context, appointmentID AppointmentID) (*Inspection, error)
 	FindByInspector(ctx context.Context, inspectorID InspectorID, filter InspectionFilter) ([]*Inspection, error)
+	// FindPhotoMeta returns the storage path and MIME type for a photo by ID.
+	// This is used to serve photo data without loading the full inspection aggregate.
+	FindPhotoMeta(ctx context.Context, photoID PhotoID) (storagePath, mimeType string, err error)
 	Delete(ctx context.Context, id InspectionID) error
 }
 

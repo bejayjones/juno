@@ -2,6 +2,7 @@ package application_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,7 +13,11 @@ import (
 
 func newSvc(t *testing.T) *application.InspectionService {
 	t.Helper()
-	return application.NewInspectionService(newFakeRepo(), clock.Fixed(time.Date(2025, 6, 1, 10, 0, 0, 0, time.UTC)))
+	return application.NewInspectionService(
+		newFakeRepo(),
+		newFakeStorage(),
+		clock.Fixed(time.Date(2025, 6, 1, 10, 0, 0, 0, time.UTC)),
+	)
 }
 
 func startTestInspection(t *testing.T, svc *application.InspectionService) application.InspectionView {
@@ -290,6 +295,109 @@ func TestList(t *testing.T) {
 	}
 	if len(views) != 1 {
 		t.Errorf("want 1 inspection for insp-1, got %d", len(views))
+	}
+}
+
+func TestAddPhoto_Success(t *testing.T) {
+	svc := newSvc(t)
+	view := startTestInspection(t, svc)
+
+	// Add a finding first so we have a findingID to attach the photo to.
+	f, _ := svc.AddFinding(context.Background(),
+		view.ID, "roof", "roof.gutters_downspouts",
+		application.AddFindingInput{Narrative: "test finding", IsDeficiency: false})
+
+	photo, err := svc.AddPhoto(context.Background(),
+		view.ID, "roof", "roof.gutters_downspouts", f.ID,
+		"image/jpeg",
+		strings.NewReader("fake jpeg data"),
+	)
+	if err != nil {
+		t.Fatalf("AddPhoto: %v", err)
+	}
+	if photo.ID == "" {
+		t.Error("want non-empty photo ID")
+	}
+	if photo.MimeType != "image/jpeg" {
+		t.Errorf("want image/jpeg, got %s", photo.MimeType)
+	}
+}
+
+func TestAddPhoto_InvalidMimeType(t *testing.T) {
+	svc := newSvc(t)
+	view := startTestInspection(t, svc)
+	f, _ := svc.AddFinding(context.Background(),
+		view.ID, "roof", "roof.gutters_downspouts",
+		application.AddFindingInput{Narrative: "test", IsDeficiency: false})
+
+	_, err := svc.AddPhoto(context.Background(),
+		view.ID, "roof", "roof.gutters_downspouts", f.ID,
+		"image/gif",
+		strings.NewReader("gif data"),
+	)
+	if err == nil {
+		t.Fatal("expected ErrInvalidMimeType, got nil")
+	}
+}
+
+func TestDeletePhoto_Success(t *testing.T) {
+	svc := newSvc(t)
+	view := startTestInspection(t, svc)
+	f, _ := svc.AddFinding(context.Background(),
+		view.ID, "roof", "roof.gutters_downspouts",
+		application.AddFindingInput{Narrative: "test", IsDeficiency: false})
+
+	photo, _ := svc.AddPhoto(context.Background(),
+		view.ID, "roof", "roof.gutters_downspouts", f.ID,
+		"image/jpeg",
+		strings.NewReader("jpeg data"),
+	)
+
+	err := svc.DeletePhoto(context.Background(),
+		view.ID, "roof", "roof.gutters_downspouts", photo.ID)
+	if err != nil {
+		t.Fatalf("DeletePhoto: %v", err)
+	}
+
+	// Photo should be gone from the inspection.
+	got, _ := svc.GetByID(context.Background(), view.ID)
+	for _, sys := range got.Systems {
+		if sys.SystemType == "roof" {
+			for _, item := range sys.Items {
+				if item.ItemKey == "roof.gutters_downspouts" {
+					for _, finding := range item.Findings {
+						for _, p := range finding.Photos {
+							if p.ID == photo.ID {
+								t.Error("photo still present after delete")
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestGetPhotoData_Success(t *testing.T) {
+	svc := newSvc(t)
+	view := startTestInspection(t, svc)
+	f, _ := svc.AddFinding(context.Background(),
+		view.ID, "roof", "roof.gutters_downspouts",
+		application.AddFindingInput{Narrative: "test", IsDeficiency: false})
+
+	photo, _ := svc.AddPhoto(context.Background(),
+		view.ID, "roof", "roof.gutters_downspouts", f.ID,
+		"image/png",
+		strings.NewReader("png bytes"),
+	)
+
+	rc, mimeType, err := svc.GetPhotoData(context.Background(), photo.ID)
+	if err != nil {
+		t.Fatalf("GetPhotoData: %v", err)
+	}
+	defer rc.Close()
+	if mimeType != "image/png" {
+		t.Errorf("want image/png, got %s", mimeType)
 	}
 }
 

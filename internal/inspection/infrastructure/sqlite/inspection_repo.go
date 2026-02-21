@@ -159,10 +159,10 @@ func saveFinding(tx *sql.Tx, itemID string, f *domain.Finding) error {
 
 	for _, photo := range f.Photos {
 		_, err := tx.Exec(`
-			INSERT INTO photos (id, finding_id, storage_path, captured_at, uploaded)
-			VALUES (?, ?, ?, ?, 0)
+			INSERT INTO photos (id, finding_id, storage_path, mime_type, captured_at, uploaded)
+			VALUES (?, ?, ?, ?, ?, 0)
 		`,
-			string(photo.ID), string(f.ID), photo.StoragePath, photo.CapturedAt.Unix(),
+			string(photo.ID), string(f.ID), photo.StoragePath, photo.MimeType, photo.CapturedAt.Unix(),
 		)
 		if err != nil {
 			return fmt.Errorf("insert photo %s: %w", photo.ID, err)
@@ -491,7 +491,7 @@ func loadFindings(ctx context.Context, database *db.DB, item *domain.InspectionI
 
 func loadPhotos(ctx context.Context, database *db.DB, f *domain.Finding) error {
 	rows, err := database.QueryContext(ctx, `
-		SELECT id, storage_path, captured_at
+		SELECT id, storage_path, mime_type, captured_at
 		FROM photos WHERE finding_id = ?
 		ORDER BY captured_at ASC
 	`, string(f.ID))
@@ -501,18 +501,35 @@ func loadPhotos(ctx context.Context, database *db.DB, f *domain.Finding) error {
 	defer rows.Close()
 
 	for rows.Next() {
-		var pid, storagePath string
+		var pid, storagePath, mimeType string
 		var capturedAt int64
-		if err := rows.Scan(&pid, &storagePath, &capturedAt); err != nil {
+		if err := rows.Scan(&pid, &storagePath, &mimeType, &capturedAt); err != nil {
 			return fmt.Errorf("scan photo: %w", err)
 		}
 		f.Photos = append(f.Photos, domain.PhotoRef{
 			ID:          domain.PhotoID(pid),
 			StoragePath: storagePath,
+			MimeType:    mimeType,
 			CapturedAt:  time.Unix(capturedAt, 0).UTC(),
 		})
 	}
 	return rows.Err()
+}
+
+// FindPhotoMeta returns the storage path and MIME type for a photo.
+// Used to serve photos without loading the full inspection aggregate.
+func (r *InspectionRepository) FindPhotoMeta(ctx context.Context, photoID domain.PhotoID) (storagePath, mimeType string, err error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT storage_path, mime_type FROM photos WHERE id = ?`,
+		string(photoID),
+	)
+	if err = row.Scan(&storagePath, &mimeType); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", domain.ErrPhotoNotFound
+		}
+		return "", "", fmt.Errorf("scan photo meta: %w", err)
+	}
+	return storagePath, mimeType, nil
 }
 
 func boolToInt(b bool) int {
