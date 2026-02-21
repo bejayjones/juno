@@ -6,7 +6,11 @@ import (
 	"os"
 
 	"github.com/bejayjones/juno/api/rest"
+	identityapp "github.com/bejayjones/juno/internal/identity/application"
+	identityauth "github.com/bejayjones/juno/internal/identity/infrastructure/auth"
+	identitysqlite "github.com/bejayjones/juno/internal/identity/infrastructure/sqlite"
 	"github.com/bejayjones/juno/internal/platform/db"
+	"github.com/bejayjones/juno/pkg/clock"
 	"github.com/bejayjones/juno/pkg/config"
 )
 
@@ -31,6 +35,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Identity infrastructure.
+	jwtSvc := identityauth.NewJWTService(cfg.Auth.JWTSecret, cfg.Auth.TokenTTLHours)
+	hasher := identityauth.BcryptHasher{}
+	companyRepo := identitysqlite.NewCompanyRepository(database)
+	inspectorRepo := identitysqlite.NewInspectorRepository(database)
+	clientRepo := identitysqlite.NewClientRepository(database)
+
+	// Identity application services.
+	clk := clock.Real()
+	inspectorSvc := identityapp.NewInspectorService(inspectorRepo, companyRepo, hasher, jwtSvc, clk)
+	companySvc := identityapp.NewCompanyService(companyRepo, clk)
+	clientSvc := identityapp.NewClientService(clientRepo, clk)
+
+	tokenVerifier := rest.NewJWTAdapter(jwtSvc)
+
 	slog.Info("starting juno",
 		"host", cfg.Server.Host,
 		"port", cfg.Server.Port,
@@ -38,7 +57,7 @@ func main() {
 		"db_driver", cfg.Database.Driver,
 	)
 
-	srv := rest.NewServer(cfg, database)
+	srv := rest.NewServer(cfg, database, inspectorSvc, companySvc, clientSvc, tokenVerifier)
 	if err := srv.Start(); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
