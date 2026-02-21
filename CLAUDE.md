@@ -118,20 +118,24 @@ EMAIL_DRIVER=smtp|queue_only     default: queue_only
 **Phase 1 is complete.** The following is implemented and compiles:
 
 ```
-cmd/server/main.go              entrypoint; loads config, starts HTTP server
-api/rest/server.go              Server struct, chi router, middleware wiring
-api/rest/routes.go              GET /health registered; /api/v1 stub ready
-api/rest/health.go              GET /health → {status, timestamp, mode}
-api/rest/respond.go             respond() / respondError() helpers
-api/rest/middleware/logging.go  structured request logger
-pkg/config/config.go            env-var config with validation
-pkg/id/id.go                    UUID generation + validation (google/uuid)
-pkg/clock/clock.go              Clock interface + Real() + Fixed() for tests
+cmd/server/main.go                          entrypoint; loads config, starts HTTP server
+api/rest/server.go                          Server struct, chi router, middleware wiring
+api/rest/routes.go                          GET /health registered; /api/v1 stub ready
+api/rest/health.go                          GET /health → {status, timestamp, mode}
+api/rest/respond.go                         respond() / respondError() helpers
+api/rest/middleware/logging.go              structured request logger
+pkg/config/config.go                        env-var config with validation
+pkg/id/id.go                                UUID generation + validation (google/uuid)
+pkg/clock/clock.go                          Clock interface + Real() + Fixed() for tests
+internal/inspection/domain/                 Inspection aggregate, 10-system catalog, findings
+internal/scheduling/domain/                 Appointment aggregate
+internal/identity/domain/                   Inspector, Company, Client aggregates
+internal/reporting/domain/                  Report aggregate, Delivery entity
 Makefile
 .gitignore
 ```
 
-**Next up: Phase 2 — Domain Models.** See `ROADMAP.md` for full phase status.
+**Next up: Phase 3 — Database Infrastructure.** See `ROADMAP.md` for full phase status.
 
 ## Testing Approach
 

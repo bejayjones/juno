@@ -18,8 +18,8 @@ Phases are sequential unless noted. Each phase ends with a compilable, testable 
 
 ---
 
-## ⬜ Phase 2 — Domain Models
-**Status: Not started**
+## ✅ Phase 2 — Domain Models
+**Status: Complete**
 **Depends on: Phase 1**
 
 Pure Go domain types. Zero external dependencies. No database, no HTTP.
