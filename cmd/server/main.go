@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/bejayjones/juno/api/rest"
+	inspectionapp "github.com/bejayjones/juno/internal/inspection/application"
+	inspectionsqlite "github.com/bejayjones/juno/internal/inspection/infrastructure/sqlite"
 	identityapp "github.com/bejayjones/juno/internal/identity/application"
 	identityauth "github.com/bejayjones/juno/internal/identity/infrastructure/auth"
 	identitysqlite "github.com/bejayjones/juno/internal/identity/infrastructure/sqlite"
@@ -54,6 +56,10 @@ func main() {
 	appointmentRepo := schedulingsqlite.NewAppointmentRepository(database)
 	appointmentSvc := schedulingapp.NewAppointmentService(appointmentRepo, clk)
 
+	// Inspection infrastructure and service.
+	inspectionRepo := inspectionsqlite.NewInspectionRepository(database)
+	inspectionSvc := inspectionapp.NewInspectionService(inspectionRepo, clk)
+
 	tokenVerifier := rest.NewJWTAdapter(jwtSvc)
 
 	slog.Info("starting juno",
@@ -63,7 +69,7 @@ func main() {
 		"db_driver", cfg.Database.Driver,
 	)
 
-	srv := rest.NewServer(cfg, database, inspectorSvc, companySvc, clientSvc, appointmentSvc, tokenVerifier)
+	srv := rest.NewServer(cfg, database, inspectorSvc, companySvc, clientSvc, appointmentSvc, inspectionSvc, tokenVerifier)
 	if err := srv.Start(); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
