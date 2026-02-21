@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+	/* Juno brand tokens */
+	--color-brand: oklch(0.6 0.2 250);
+	--color-brand-dark: oklch(0.45 0.2 250);
+
+	/* Safe-area insets for notched phones */
+	--safe-top: env(safe-area-inset-top, 0px);
+	--safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Bottom nav occupies space for the tab bar + safe area inset */
+.pb-nav {
+	padding-bottom: calc(4rem + var(--safe-bottom));
+}
+
+/* Tap target minimum size for mobile */
+.tap-target {
+	min-height: 44px;
+	min-width: 44px;
+}

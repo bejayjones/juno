@@ -42,4 +42,7 @@ func (s *Server) registerRoutes(r chi.Router) {
 			r.Delete("/appointments/{id}", s.handleCancelAppointment)
 		})
 	})
+
+	// Serve the SvelteKit SPA for all other paths.
+	r.Handle("/*", spaHandler())
 }
