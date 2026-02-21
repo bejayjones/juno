@@ -1,0 +1,29 @@
+# Binaries
+bin/
+*.exe
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Photo storage
+data/
+
+# Environment
+.env
+.env.*
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Frontend build output (embedded into binary at build time)
+web/.svelte-kit/
+web/build/
+web/node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
