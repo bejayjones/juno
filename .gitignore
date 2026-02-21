@@ -21,7 +21,8 @@ data/
 
 # Frontend build output (embedded into binary at build time)
 web/.svelte-kit/
-web/build/
+web/build/*
+!web/build/.gitkeep
 web/node_modules/
 
 # OS

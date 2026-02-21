@@ -2,12 +2,15 @@ package rest
 
 import (
 	"fmt"
+	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/bejayjones/juno/api/rest/middleware"
 	identityapp "github.com/bejayjones/juno/internal/identity/application"
 	identityauth "github.com/bejayjones/juno/internal/identity/infrastructure/auth"
 	"github.com/bejayjones/juno/internal/platform/db"
+	webui "github.com/bejayjones/juno/web"
 	"github.com/bejayjones/juno/pkg/config"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -15,12 +18,12 @@ import (
 
 // Server is the HTTP server for the Juno API.
 type Server struct {
-	cfg          *config.Config
-	db           *db.DB
-	router       chi.Router
-	inspectorSvc *identityapp.InspectorService
-	companySvc   *identityapp.CompanyService
-	clientSvc    *identityapp.ClientService
+	cfg           *config.Config
+	db            *db.DB
+	router        chi.Router
+	inspectorSvc  *identityapp.InspectorService
+	companySvc    *identityapp.CompanyService
+	clientSvc     *identityapp.ClientService
 	tokenVerifier middleware.TokenVerifier
 }
 
@@ -61,6 +64,32 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%d", s.cfg.Server.Host, s.cfg.Server.Port)
 	return http.ListenAndServe(addr, s)
+}
+
+// spaHandler returns an http.Handler that serves the embedded SvelteKit build.
+// Files that exist are served directly; everything else serves index.html for
+// client-side routing.
+func spaHandler() http.Handler {
+	buildFS, err := fs.Sub(webui.FS, "build")
+	if err != nil {
+		// Should never happen — build dir is always present (even as an empty dir).
+		panic("webui: cannot sub build: " + err.Error())
+	}
+	fileServer := http.FileServer(http.FS(buildFS))
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+
+		if _, err := buildFS.Open(path); err != nil {
+			// Path not found — serve SPA fallback (index.html).
+			http.ServeFileFS(w, r, buildFS, "index.html")
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	})
 }
 
 // jwtAdapter adapts JWTService.Verify to the middleware.TokenVerifier interface.
