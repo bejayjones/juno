@@ -5,21 +5,23 @@ import (
 	"net/http"
 
 	"github.com/bejayjones/juno/api/rest/middleware"
+	"github.com/bejayjones/juno/internal/platform/db"
 	"github.com/bejayjones/juno/pkg/config"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
 // Server is the HTTP server for the Juno API.
-// Application service dependencies are added to this struct as each bounded
-// context is implemented in later phases.
+// Bounded-context application services are added as fields here as each
+// phase is implemented.
 type Server struct {
 	cfg    *config.Config
+	db     *db.DB
 	router chi.Router
 }
 
-func NewServer(cfg *config.Config) *Server {
-	s := &Server{cfg: cfg}
+func NewServer(cfg *config.Config, database *db.DB) *Server {
+	s := &Server{cfg: cfg, db: database}
 	s.router = s.buildRouter()
 	return s
 }
