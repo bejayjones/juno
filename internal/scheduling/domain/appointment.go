@@ -126,6 +126,19 @@ func (a *Appointment) Reschedule(newTime time.Time, now time.Time) error {
 	return nil
 }
 
+// UpdateDetails changes the mutable non-status fields of a scheduled appointment.
+// Only allowed while status is Scheduled.
+func (a *Appointment) UpdateDetails(property PropertyAddress, durationMin int, notes string, now time.Time) error {
+	if a.Status != AppointmentScheduled_ {
+		return ErrInvalidTransition
+	}
+	a.Property = property
+	a.EstimatedDurationMin = durationMin
+	a.Notes = notes
+	a.UpdatedAt = now
+	return nil
+}
+
 func (a *Appointment) Events() []any { return a.events }
 func (a *Appointment) ClearEvents()  { a.events = nil }
 func (a *Appointment) record(e any)  { a.events = append(a.events, e) }
