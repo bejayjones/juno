@@ -6,26 +6,21 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
+
 	"github.com/bejayjones/juno/api/rest/middleware"
+	inspectionapp "github.com/bejayjones/juno/internal/inspection/application"
 	identityapp "github.com/bejayjones/juno/internal/identity/application"
 	identityauth "github.com/bejayjones/juno/internal/identity/infrastructure/auth"
 	"github.com/bejayjones/juno/internal/platform/db"
-	webui "github.com/bejayjones/juno/web"
 	schedulingapp "github.com/bejayjones/juno/internal/scheduling/application"
 	"github.com/bejayjones/juno/pkg/config"
-	"github.com/go-chi/chi/v5"
-	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	webui "github.com/bejayjones/juno/web"
 )
 
 // Server is the HTTP server for the Juno API.
 type Server struct {
-	cfg           *config.Config
-	db            *db.DB
-	router        chi.Router
-	inspectorSvc  *identityapp.InspectorService
-	companySvc    *identityapp.CompanyService
-	clientSvc     *identityapp.ClientService
-	tokenVerifier middleware.TokenVerifier
 	cfg            *config.Config
 	db             *db.DB
 	router         chi.Router
@@ -33,6 +28,7 @@ type Server struct {
 	companySvc     *identityapp.CompanyService
 	clientSvc      *identityapp.ClientService
 	appointmentSvc *schedulingapp.AppointmentService
+	inspectionSvc  *inspectionapp.InspectionService
 	tokenVerifier  middleware.TokenVerifier
 }
 
@@ -44,6 +40,7 @@ func NewServer(
 	companySvc *identityapp.CompanyService,
 	clientSvc *identityapp.ClientService,
 	appointmentSvc *schedulingapp.AppointmentService,
+	inspectionSvc *inspectionapp.InspectionService,
 	tokenVerifier middleware.TokenVerifier,
 ) *Server {
 	s := &Server{
@@ -53,6 +50,7 @@ func NewServer(
 		companySvc:     companySvc,
 		clientSvc:      clientSvc,
 		appointmentSvc: appointmentSvc,
+		inspectionSvc:  inspectionSvc,
 		tokenVerifier:  tokenVerifier,
 	}
 	s.router = s.buildRouter()
