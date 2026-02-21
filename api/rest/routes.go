@@ -33,6 +33,13 @@ func (s *Server) registerRoutes(r chi.Router) {
 			r.Get("/clients/{id}", s.handleGetClient)
 			r.Put("/clients/{id}", s.handleUpdateClient)
 			r.Delete("/clients/{id}", s.handleDeleteClient)
+
+			// Scheduling.
+			r.Post("/appointments", s.handleCreateAppointment)
+			r.Get("/appointments", s.handleListAppointments)
+			r.Get("/appointments/{id}", s.handleGetAppointment)
+			r.Put("/appointments/{id}", s.handleUpdateAppointment)
+			r.Delete("/appointments/{id}", s.handleCancelAppointment)
 		})
 	})
 
