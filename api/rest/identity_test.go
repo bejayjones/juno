@@ -161,7 +161,7 @@ func newTestServer(t *testing.T) (*rest.Server, *fakeTokenVerifier) {
 	clientSvc := identityapp.NewClientService(clientRepo, clk)
 
 	verifier := &fakeTokenVerifier{}
-	srv := rest.NewServer(nil, nil, inspectorSvc, companySvc, clientSvc, nil, nil, nil, verifier)
+	srv := rest.NewServer(nil, nil, inspectorSvc, companySvc, clientSvc, nil, nil, nil, nil, verifier)
 	return srv, verifier
 }
 

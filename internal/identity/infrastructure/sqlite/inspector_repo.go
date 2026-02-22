@@ -9,14 +9,22 @@ import (
 
 	"github.com/bejayjones/juno/internal/identity/domain"
 	"github.com/bejayjones/juno/internal/platform/db"
+	"github.com/bejayjones/juno/internal/sync/recorder"
 )
 
 type InspectorRepository struct {
-	db *db.DB
+	db       *db.DB
+	recorder *recorder.Recorder
 }
 
 func NewInspectorRepository(database *db.DB) *InspectorRepository {
 	return &InspectorRepository{db: database}
+}
+
+// WithRecorder enables sync recording for this repository.
+func (r *InspectorRepository) WithRecorder(rec *recorder.Recorder) *InspectorRepository {
+	r.recorder = rec
+	return r
 }
 
 func (r *InspectorRepository) Save(ctx context.Context, inspector *domain.Inspector) error {
@@ -56,7 +64,8 @@ func (r *InspectorRepository) Save(ctx context.Context, inspector *domain.Inspec
 				return fmt.Errorf("insert license: %w", err)
 			}
 		}
-		return nil
+
+		return r.recorder.Record(ctx, tx, "inspectors", string(inspector.ID), "upsert", inspector)
 	})
 }
 
@@ -118,8 +127,12 @@ func (r *InspectorRepository) FindByCompany(ctx context.Context, companyID domai
 }
 
 func (r *InspectorRepository) Delete(ctx context.Context, id domain.InspectorID) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM inspectors WHERE id = ?`, string(id))
-	return err
+	return r.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM inspectors WHERE id = ?`, string(id)); err != nil {
+			return err
+		}
+		return r.recorder.Record(ctx, tx, "inspectors", string(id), "delete", nil)
+	})
 }
 
 func (r *InspectorRepository) loadLicenses(ctx context.Context, inspector *domain.Inspector) (*domain.Inspector, error) {
