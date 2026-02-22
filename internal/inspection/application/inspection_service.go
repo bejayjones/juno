@@ -3,20 +3,27 @@ package application
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/bejayjones/juno/internal/inspection/domain"
 	"github.com/bejayjones/juno/pkg/clock"
 	"github.com/bejayjones/juno/pkg/id"
+	"github.com/bejayjones/juno/pkg/storage"
 )
 
 // InspectionService handles all walkthrough operations.
 type InspectionService struct {
 	inspections domain.InspectionRepository
+	photos      storage.PhotoStorage
 	clock       clock.Clock
 }
 
-func NewInspectionService(inspections domain.InspectionRepository, clk clock.Clock) *InspectionService {
-	return &InspectionService{inspections: inspections, clock: clk}
+func NewInspectionService(
+	inspections domain.InspectionRepository,
+	photos storage.PhotoStorage,
+	clk clock.Clock,
+) *InspectionService {
+	return &InspectionService{inspections: inspections, photos: photos, clock: clk}
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -282,4 +289,126 @@ func (s *InspectionService) GetDeficiencySummary(ctx context.Context, inspID str
 		views[i] = toDeficiencyView(d)
 	}
 	return views, nil
+}
+
+// ── Photo operations ──────────────────────────────────────────────────────────
+
+// AddPhoto saves a photo file to storage and attaches it to the given finding.
+// mimeType must be one of the values in storage.AllowedMimeTypes.
+func (s *InspectionService) AddPhoto(
+	ctx context.Context,
+	inspID, systemType, itemKey, findingID string,
+	mimeType string,
+	data io.Reader,
+) (PhotoRefView, error) {
+	ext, ok := storage.AllowedMimeTypes[mimeType]
+	if !ok {
+		return PhotoRefView{}, domain.ErrInvalidMimeType
+	}
+
+	insp, err := s.inspections.FindByID(ctx, domain.InspectionID(inspID))
+	if err != nil {
+		return PhotoRefView{}, err
+	}
+
+	section, ok := insp.Systems[domain.SystemType(systemType)]
+	if !ok {
+		return PhotoRefView{}, domain.ErrInvalidSystemType
+	}
+	item, err := section.ItemByKey(domain.ItemKey(itemKey))
+	if err != nil {
+		return PhotoRefView{}, err
+	}
+	finding, err := item.FindingByID(domain.FindingID(findingID))
+	if err != nil {
+		return PhotoRefView{}, err
+	}
+
+	photoID := id.New()
+	storagePath, err := s.photos.Save(ctx, photoID, ext, data)
+	if err != nil {
+		return PhotoRefView{}, fmt.Errorf("save photo to storage: %w", err)
+	}
+
+	now := s.clock.Now()
+	ref := domain.PhotoRef{
+		ID:          domain.PhotoID(photoID),
+		StoragePath: storagePath,
+		MimeType:    mimeType,
+		CapturedAt:  now,
+	}
+	finding.AddPhoto(ref)
+
+	if err := s.inspections.Save(ctx, insp); err != nil {
+		// Best-effort cleanup: remove the orphaned file.
+		_ = s.photos.Delete(ctx, storagePath)
+		return PhotoRefView{}, fmt.Errorf("save inspection: %w", err)
+	}
+
+	return PhotoRefView{
+		ID:          photoID,
+		StoragePath: storagePath,
+		MimeType:    mimeType,
+		CapturedAt:  now.Unix(),
+	}, nil
+}
+
+// DeletePhoto removes a photo from its finding and from storage.
+func (s *InspectionService) DeletePhoto(
+	ctx context.Context,
+	inspID, systemType, itemKey, photoID string,
+) error {
+	// Fetch storage path first — it's available in the DB before we save.
+	storagePath, _, err := s.inspections.FindPhotoMeta(ctx, domain.PhotoID(photoID))
+	if err != nil {
+		return err // ErrPhotoNotFound or a DB error
+	}
+
+	insp, err := s.inspections.FindByID(ctx, domain.InspectionID(inspID))
+	if err != nil {
+		return err
+	}
+
+	section, ok := insp.Systems[domain.SystemType(systemType)]
+	if !ok {
+		return domain.ErrInvalidSystemType
+	}
+	item, err := section.ItemByKey(domain.ItemKey(itemKey))
+	if err != nil {
+		return err
+	}
+
+	// Remove from the in-memory aggregate (search all findings on the item).
+	var found bool
+	for i := range item.Findings {
+		if item.Findings[i].RemovePhoto(domain.PhotoID(photoID)) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return domain.ErrPhotoNotFound
+	}
+
+	// Persist — findings delete+reinsert removes the photo row from the DB.
+	if err := s.inspections.Save(ctx, insp); err != nil {
+		return fmt.Errorf("save inspection: %w", err)
+	}
+
+	// Best-effort storage cleanup (don't fail the request on storage error).
+	_ = s.photos.Delete(ctx, storagePath)
+	return nil
+}
+
+// GetPhotoData returns a ReadCloser and MIME type for streaming a photo to a client.
+func (s *InspectionService) GetPhotoData(ctx context.Context, photoID string) (io.ReadCloser, string, error) {
+	storagePath, mimeType, err := s.inspections.FindPhotoMeta(ctx, domain.PhotoID(photoID))
+	if err != nil {
+		return nil, "", err
+	}
+	rc, err := s.photos.Get(ctx, storagePath)
+	if err != nil {
+		return nil, "", fmt.Errorf("get photo from storage: %w", err)
+	}
+	return rc, mimeType, nil
 }

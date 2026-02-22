@@ -3,6 +3,7 @@ package rest
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/bejayjones/juno/api/rest/middleware"
 	inspectionapp "github.com/bejayjones/juno/internal/inspection/application"
 	"github.com/bejayjones/juno/internal/inspection/domain"
+	"github.com/bejayjones/juno/pkg/storage"
 )
 
 // POST /api/v1/inspections — start a new inspection.
@@ -356,4 +358,110 @@ func (s *Server) handleGetDeficiencySummary(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	respond(w, http.StatusOK, views)
+}
+
+// POST /api/v1/inspections/{id}/systems/{systemType}/items/{itemKey}/photos
+// Accepts multipart/form-data with fields: finding_id (text), photo (file).
+func (s *Server) handleAddPhoto(w http.ResponseWriter, r *http.Request) {
+	inspID := chi.URLParam(r, "id")
+	systemType := chi.URLParam(r, "systemType")
+	itemKey := chi.URLParam(r, "itemKey")
+
+	// Enforce 20 MB ceiling on the entire multipart body.
+	r.Body = http.MaxBytesReader(w, r.Body, storage.MaxPhotoBytes+1<<20)
+	if err := r.ParseMultipartForm(storage.MaxPhotoBytes); err != nil {
+		respondError(w, http.StatusRequestEntityTooLarge, "photo exceeds 20 MB limit")
+		return
+	}
+
+	findingID := r.FormValue("finding_id")
+	if findingID == "" {
+		respondError(w, http.StatusBadRequest, "finding_id is required")
+		return
+	}
+
+	file, header, err := r.FormFile("photo")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "photo file is required")
+		return
+	}
+	defer file.Close()
+
+	// Determine MIME type: prefer explicit Content-Type, fall back to filename extension.
+	mimeType := header.Header.Get("Content-Type")
+	if _, ok := storage.AllowedMimeTypes[mimeType]; !ok {
+		respondError(w, http.StatusUnsupportedMediaType, domain.ErrInvalidMimeType.Error())
+		return
+	}
+
+	view, err := s.inspectionSvc.AddPhoto(r.Context(),
+		inspID, systemType, itemKey, findingID, mimeType, file)
+	if errors.Is(err, domain.ErrInspectionNotFound) {
+		respondError(w, http.StatusNotFound, "inspection not found")
+		return
+	}
+	if errors.Is(err, domain.ErrInspectionCompleted) {
+		respondError(w, http.StatusUnprocessableEntity, "inspection is already completed")
+		return
+	}
+	if errors.Is(err, domain.ErrInvalidSystemType) || errors.Is(err, domain.ErrItemNotFound) || errors.Is(err, domain.ErrFindingNotFound) {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if errors.Is(err, domain.ErrInvalidMimeType) {
+		respondError(w, http.StatusUnsupportedMediaType, err.Error())
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respond(w, http.StatusCreated, view)
+}
+
+// DELETE /api/v1/inspections/{id}/systems/{systemType}/items/{itemKey}/photos/{photoID}
+func (s *Server) handleDeletePhoto(w http.ResponseWriter, r *http.Request) {
+	inspID := chi.URLParam(r, "id")
+	systemType := chi.URLParam(r, "systemType")
+	itemKey := chi.URLParam(r, "itemKey")
+	photoID := chi.URLParam(r, "photoID")
+
+	err := s.inspectionSvc.DeletePhoto(r.Context(), inspID, systemType, itemKey, photoID)
+	if errors.Is(err, domain.ErrInspectionNotFound) {
+		respondError(w, http.StatusNotFound, "inspection not found")
+		return
+	}
+	if errors.Is(err, domain.ErrInspectionCompleted) {
+		respondError(w, http.StatusUnprocessableEntity, "inspection is already completed")
+		return
+	}
+	if errors.Is(err, domain.ErrPhotoNotFound) || errors.Is(err, domain.ErrInvalidSystemType) || errors.Is(err, domain.ErrItemNotFound) {
+		respondError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /api/v1/photos/{photoID} — stream a photo file.
+func (s *Server) handleServePhoto(w http.ResponseWriter, r *http.Request) {
+	photoID := chi.URLParam(r, "photoID")
+
+	rc, mimeType, err := s.inspectionSvc.GetPhotoData(r.Context(), photoID)
+	if errors.Is(err, domain.ErrPhotoNotFound) {
+		respondError(w, http.StatusNotFound, "photo not found")
+		return
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer rc.Close()
+
+	w.Header().Set("Content-Type", mimeType)
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	io.Copy(w, rc) //nolint:errcheck
 }

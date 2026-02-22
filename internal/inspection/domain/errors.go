@@ -11,8 +11,11 @@ var (
 	ErrInspectionCompleted = errors.New("inspection is already completed")
 	ErrItemNotFound        = errors.New("inspection item not found")
 	ErrFindingNotFound     = errors.New("finding not found")
+	ErrPhotoNotFound       = errors.New("photo not found")
 	ErrInvalidSystemType   = errors.New("invalid system type")
 	ErrNIReasonRequired    = errors.New("reason is required when status is NotInspected")
+	ErrInvalidMimeType     = errors.New("unsupported image type; accepted: JPEG, PNG, HEIC")
+	ErrPhotoTooLarge       = errors.New("photo exceeds 20 MB limit")
 )
 
 // ValidationError is returned by Complete when required fields are unfilled.

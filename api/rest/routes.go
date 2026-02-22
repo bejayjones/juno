@@ -54,6 +54,13 @@ func (s *Server) registerRoutes(r chi.Router) {
 			r.Post("/inspections/{id}/systems/{systemType}/items/{itemKey}/findings", s.handleAddFinding)
 			r.Put("/inspections/{id}/systems/{systemType}/items/{itemKey}/findings/{findingID}", s.handleUpdateFinding)
 			r.Delete("/inspections/{id}/systems/{systemType}/items/{itemKey}/findings/{findingID}", s.handleDeleteFinding)
+
+			// Photo upload/delete (authenticated; serve is also public below).
+			r.Post("/inspections/{id}/systems/{systemType}/items/{itemKey}/photos", s.handleAddPhoto)
+			r.Delete("/inspections/{id}/systems/{systemType}/items/{itemKey}/photos/{photoID}", s.handleDeletePhoto)
+
+			// Photo streaming (inside auth group so the token is required).
+			r.Get("/photos/{photoID}", s.handleServePhoto)
 		})
 	})
 

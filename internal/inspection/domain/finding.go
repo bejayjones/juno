@@ -8,6 +8,7 @@ type PhotoID string
 type PhotoRef struct {
 	ID          PhotoID
 	StoragePath string
+	MimeType    string
 	CapturedAt  time.Time
 }
 

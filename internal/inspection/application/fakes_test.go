@@ -2,10 +2,49 @@ package application_test
 
 import (
 	"context"
+	"io"
+	"strings"
 	"sync"
 
 	"github.com/bejayjones/juno/internal/inspection/domain"
+	"github.com/bejayjones/juno/pkg/storage"
 )
+
+// fakePhotoStorage is an in-memory PhotoStorage for tests.
+type fakePhotoStorage struct {
+	mu    sync.Mutex
+	files map[string]string // storagePath → content
+}
+
+func newFakeStorage() *fakePhotoStorage {
+	return &fakePhotoStorage{files: make(map[string]string)}
+}
+
+func (s *fakePhotoStorage) Save(_ context.Context, photoID, ext string, data io.Reader) (string, error) {
+	b, _ := io.ReadAll(data)
+	path := photoID + ext
+	s.mu.Lock()
+	s.files[path] = string(b)
+	s.mu.Unlock()
+	return path, nil
+}
+
+func (s *fakePhotoStorage) Get(_ context.Context, storagePath string) (io.ReadCloser, error) {
+	s.mu.Lock()
+	content, ok := s.files[storagePath]
+	s.mu.Unlock()
+	if !ok {
+		return nil, storage.ErrNotImplemented
+	}
+	return io.NopCloser(strings.NewReader(content)), nil
+}
+
+func (s *fakePhotoStorage) Delete(_ context.Context, storagePath string) error {
+	s.mu.Lock()
+	delete(s.files, storagePath)
+	s.mu.Unlock()
+	return nil
+}
 
 // fakeInspectionRepo is an in-memory implementation of domain.InspectionRepository.
 type fakeInspectionRepo struct {
@@ -66,6 +105,25 @@ func (r *fakeInspectionRepo) FindByInspector(_ context.Context, inspectorID doma
 		out = append(out, &cp)
 	}
 	return out, nil
+}
+
+func (r *fakeInspectionRepo) FindPhotoMeta(_ context.Context, photoID domain.PhotoID) (storagePath, mimeType string, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, insp := range r.inspections {
+		for _, section := range insp.Systems {
+			for _, item := range section.Items {
+				for _, f := range item.Findings {
+					for _, p := range f.Photos {
+						if p.ID == photoID {
+							return p.StoragePath, p.MimeType, nil
+						}
+					}
+				}
+			}
+		}
+	}
+	return "", "", domain.ErrPhotoNotFound
 }
 
 func (r *fakeInspectionRepo) Delete(_ context.Context, id domain.InspectionID) error {

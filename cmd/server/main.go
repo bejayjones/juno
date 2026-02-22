@@ -16,6 +16,9 @@ import (
 	schedulingsqlite "github.com/bejayjones/juno/internal/scheduling/infrastructure/sqlite"
 	"github.com/bejayjones/juno/pkg/clock"
 	"github.com/bejayjones/juno/pkg/config"
+	"github.com/bejayjones/juno/pkg/storage"
+	"github.com/bejayjones/juno/pkg/storage/local"
+	s3storage "github.com/bejayjones/juno/pkg/storage/s3"
 )
 
 func main() {
@@ -56,9 +59,18 @@ func main() {
 	appointmentRepo := schedulingsqlite.NewAppointmentRepository(database)
 	appointmentSvc := schedulingapp.NewAppointmentService(appointmentRepo, clk)
 
+	// Photo storage.
+	var photoStore storage.PhotoStorage
+	switch cfg.Storage.Driver {
+	case "s3":
+		photoStore = s3storage.New()
+	default:
+		photoStore = local.New(cfg.Storage.LocalPath)
+	}
+
 	// Inspection infrastructure and service.
 	inspectionRepo := inspectionsqlite.NewInspectionRepository(database)
-	inspectionSvc := inspectionapp.NewInspectionService(inspectionRepo, clk)
+	inspectionSvc := inspectionapp.NewInspectionService(inspectionRepo, photoStore, clk)
 
 	tokenVerifier := rest.NewJWTAdapter(jwtSvc)
 

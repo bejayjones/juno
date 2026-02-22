@@ -66,6 +66,7 @@ type FindingView struct {
 type PhotoRefView struct {
 	ID          string `json:"id"`
 	StoragePath string `json:"storage_path"`
+	MimeType    string `json:"mime_type"`
 	CapturedAt  int64  `json:"captured_at"`
 }
 
@@ -159,6 +160,7 @@ func toFindingView(f domain.Finding) FindingView {
 		photos[i] = PhotoRefView{
 			ID:          string(p.ID),
 			StoragePath: p.StoragePath,
+			MimeType:    p.MimeType,
 			CapturedAt:  p.CapturedAt.Unix(),
 		}
 	}
