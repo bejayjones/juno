@@ -375,6 +375,9 @@ func buildInspection(
 }
 
 // loadSystems populates insp.Systems from the database.
+// Sections are materialized in a first pass (closing the outer rows), then
+// descriptions/items/findings are loaded in separate queries to avoid nested
+// query deadlocks with the SQLite MaxOpenConns(1) connection pool.
 func loadSystems(ctx context.Context, database *db.DB, insp *domain.Inspection) error {
 	rows, err := database.QueryContext(ctx, `
 		SELECT id, system_type, inspector_notes, updated_at
@@ -383,33 +386,43 @@ func loadSystems(ctx context.Context, database *db.DB, insp *domain.Inspection) 
 	if err != nil {
 		return fmt.Errorf("query system_sections: %w", err)
 	}
-	defer rows.Close()
 
+	// First pass: collect section headers and close the rows before issuing
+	// any further queries (prevents connection pool deadlock under MaxOpenConns=1).
+	var sections []*domain.SystemSection
 	for rows.Next() {
 		var sectionID, systemType, inspectorNotes string
 		var updatedAt int64
 		if err := rows.Scan(&sectionID, &systemType, &inspectorNotes, &updatedAt); err != nil {
+			rows.Close()
 			return fmt.Errorf("scan system_section: %w", err)
 		}
-
-		section := &domain.SystemSection{
+		sections = append(sections, &domain.SystemSection{
 			ID:             sectionID,
 			SystemType:     domain.SystemType(systemType),
 			Descriptions:   make(map[domain.DescriptionKey]string),
 			InspectorNotes: inspectorNotes,
 			UpdatedAt:      time.Unix(updatedAt, 0).UTC(),
-		}
+		})
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close system_sections rows: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
 
+	// Second pass: load descriptions, items, and findings for each section.
+	for _, section := range sections {
 		if err := loadDescriptions(ctx, database, section); err != nil {
 			return err
 		}
 		if err := loadItems(ctx, database, section); err != nil {
 			return err
 		}
-
-		insp.Systems[domain.SystemType(systemType)] = section
+		insp.Systems[domain.SystemType(section.SystemType)] = section
 	}
-	return rows.Err()
+	return nil
 }
 
 func loadDescriptions(ctx context.Context, database *db.DB, section *domain.SystemSection) error {
@@ -441,31 +454,39 @@ func loadItems(ctx context.Context, database *db.DB, section *domain.SystemSecti
 	if err != nil {
 		return fmt.Errorf("query items for section %s: %w", section.SystemType, err)
 	}
-	defer rows.Close()
 
+	// Materialize items before loading findings to avoid nested query deadlock.
+	var items []domain.InspectionItem
 	for rows.Next() {
 		var itemID, itemKey, label, status, niReason string
 		var updatedAt int64
 		if err := rows.Scan(&itemID, &itemKey, &label, &status, &niReason, &updatedAt); err != nil {
+			rows.Close()
 			return fmt.Errorf("scan item: %w", err)
 		}
-
-		item := domain.InspectionItem{
+		items = append(items, domain.InspectionItem{
 			ID:                 itemID,
 			ItemKey:            domain.ItemKey(itemKey),
 			Label:              label,
 			Status:             domain.ItemStatus(status),
 			NotInspectedReason: niReason,
 			UpdatedAt:          time.Unix(updatedAt, 0).UTC(),
-		}
+		})
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close items rows: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
 
-		if err := loadFindings(ctx, database, &item); err != nil {
+	for i := range items {
+		if err := loadFindings(ctx, database, &items[i]); err != nil {
 			return err
 		}
-
-		section.Items = append(section.Items, item)
 	}
-	return rows.Err()
+	section.Items = items
+	return nil
 }
 
 func loadFindings(ctx context.Context, database *db.DB, item *domain.InspectionItem) error {
@@ -477,31 +498,39 @@ func loadFindings(ctx context.Context, database *db.DB, item *domain.InspectionI
 	if err != nil {
 		return fmt.Errorf("query findings for item %s: %w", item.ItemKey, err)
 	}
-	defer rows.Close()
 
+	// Materialize findings before loading photos to avoid nested query deadlock.
+	var findings []domain.Finding
 	for rows.Next() {
 		var fid, narrative string
 		var isDeficiency int
 		var createdAt, updatedAt int64
 		if err := rows.Scan(&fid, &narrative, &isDeficiency, &createdAt, &updatedAt); err != nil {
+			rows.Close()
 			return fmt.Errorf("scan finding: %w", err)
 		}
-
-		f := domain.Finding{
+		findings = append(findings, domain.Finding{
 			ID:           domain.FindingID(fid),
 			Narrative:    narrative,
 			IsDeficiency: isDeficiency != 0,
 			CreatedAt:    time.Unix(createdAt, 0).UTC(),
 			UpdatedAt:    time.Unix(updatedAt, 0).UTC(),
-		}
+		})
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close findings rows: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
 
-		if err := loadPhotos(ctx, database, &f); err != nil {
+	for i := range findings {
+		if err := loadPhotos(ctx, database, &findings[i]); err != nil {
 			return err
 		}
-
-		item.Findings = append(item.Findings, f)
 	}
-	return rows.Err()
+	item.Findings = findings
+	return nil
 }
 
 func loadPhotos(ctx context.Context, database *db.DB, f *domain.Finding) error {

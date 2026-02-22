@@ -143,20 +143,31 @@ func (r *ReportRepository) FindByInspector(ctx context.Context, inspectorID doma
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
+	// Materialize report headers before loading deliveries to avoid nested
+	// query deadlock with SQLite MaxOpenConns(1).
 	var reports []*domain.Report
 	for rows.Next() {
 		report, err := scanReport(rows)
 		if err != nil {
-			return nil, err
-		}
-		if err := r.loadDeliveries(ctx, report); err != nil {
+			rows.Close()
 			return nil, err
 		}
 		reports = append(reports, report)
 	}
-	return reports, rows.Err()
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, report := range reports {
+		if err := r.loadDeliveries(ctx, report); err != nil {
+			return nil, err
+		}
+	}
+	return reports, nil
 }
 
 func (r *ReportRepository) Delete(ctx context.Context, id domain.ReportID) error {
