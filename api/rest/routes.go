@@ -61,6 +61,16 @@ func (s *Server) registerRoutes(r chi.Router) {
 
 			// Photo streaming (inside auth group so the token is required).
 			r.Get("/photos/{photoID}", s.handleServePhoto)
+
+			// Reporting.
+			r.Post("/reports", s.handleGenerateReport)
+			r.Get("/reports", s.handleListReports)
+			r.Get("/reports/{id}", s.handleGetReport)
+			r.Get("/reports/{id}/pdf", s.handleGetReportPDF)
+			r.Put("/reports/{id}/finalize", s.handleFinalizeReport)
+			r.Post("/reports/{id}/deliver", s.handleDeliverReport)
+			r.Get("/reports/{id}/deliveries", s.handleListDeliveries)
+			r.Post("/reports/{id}/deliveries/retry", s.handleRetryDeliveries)
 		})
 	})
 
