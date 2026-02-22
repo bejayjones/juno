@@ -20,6 +20,10 @@ import (
 	reportingsqlite "github.com/bejayjones/juno/internal/reporting/infrastructure/sqlite"
 	schedulingapp "github.com/bejayjones/juno/internal/scheduling/application"
 	schedulingsqlite "github.com/bejayjones/juno/internal/scheduling/infrastructure/sqlite"
+	syncapp "github.com/bejayjones/juno/internal/sync/application"
+	syncdomain "github.com/bejayjones/juno/internal/sync/domain"
+	syncsqlite "github.com/bejayjones/juno/internal/sync/infrastructure/sqlite"
+	"github.com/bejayjones/juno/internal/sync/recorder"
 	"github.com/bejayjones/juno/pkg/clock"
 	"github.com/bejayjones/juno/pkg/config"
 	"github.com/bejayjones/juno/pkg/storage"
@@ -48,12 +52,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Sync infrastructure: seed the Lamport clock from the stored max value.
+	syncRepo := syncsqlite.NewSyncRepository(database)
+	maxClock, err := syncRepo.MaxClock(context.Background())
+	if err != nil {
+		slog.Error("failed to read max lamport clock", "error", err)
+		os.Exit(1)
+	}
+	lamportClock := syncdomain.NewLamportClock(maxClock)
+	syncRecorder := recorder.New(lamportClock)
+	syncSvc := syncapp.NewSyncService(syncRepo, lamportClock)
+
 	// Identity infrastructure.
 	jwtSvc := identityauth.NewJWTService(cfg.Auth.JWTSecret, cfg.Auth.TokenTTLHours)
 	hasher := identityauth.BcryptHasher{}
-	companyRepo := identitysqlite.NewCompanyRepository(database)
-	inspectorRepo := identitysqlite.NewInspectorRepository(database)
-	clientRepo := identitysqlite.NewClientRepository(database)
+	companyRepo := identitysqlite.NewCompanyRepository(database).WithRecorder(syncRecorder)
+	inspectorRepo := identitysqlite.NewInspectorRepository(database).WithRecorder(syncRecorder)
+	clientRepo := identitysqlite.NewClientRepository(database).WithRecorder(syncRecorder)
 
 	// Identity application services.
 	clk := clock.Real()
@@ -62,7 +77,7 @@ func main() {
 	clientSvc := identityapp.NewClientService(clientRepo, clk)
 
 	// Scheduling infrastructure and service.
-	appointmentRepo := schedulingsqlite.NewAppointmentRepository(database)
+	appointmentRepo := schedulingsqlite.NewAppointmentRepository(database).WithRecorder(syncRecorder)
 	appointmentSvc := schedulingapp.NewAppointmentService(appointmentRepo, clk)
 
 	// Photo storage.
@@ -75,11 +90,11 @@ func main() {
 	}
 
 	// Inspection infrastructure and service.
-	inspectionRepo := inspectionsqlite.NewInspectionRepository(database)
+	inspectionRepo := inspectionsqlite.NewInspectionRepository(database).WithRecorder(syncRecorder)
 	inspectionSvc := inspectionapp.NewInspectionService(inspectionRepo, photoStore, clk)
 
 	// Reporting infrastructure and service.
-	reportRepo := reportingsqlite.NewReportRepository(database)
+	reportRepo := reportingsqlite.NewReportRepository(database).WithRecorder(syncRecorder)
 	pdfGen := reportingpdf.NewGenerator()
 	reportsDir := filepath.Join(filepath.Dir(cfg.Storage.LocalPath), "reports")
 
@@ -100,7 +115,7 @@ func main() {
 		"db_driver", cfg.Database.Driver,
 	)
 
-	srv := rest.NewServer(cfg, database, inspectorSvc, companySvc, clientSvc, appointmentSvc, inspectionSvc, reportSvc, tokenVerifier)
+	srv := rest.NewServer(cfg, database, inspectorSvc, companySvc, clientSvc, appointmentSvc, inspectionSvc, reportSvc, syncSvc, tokenVerifier)
 	if err := srv.Start(); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)

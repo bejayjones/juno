@@ -11,21 +11,32 @@ import (
 
 	"github.com/bejayjones/juno/internal/inspection/domain"
 	"github.com/bejayjones/juno/internal/platform/db"
+	"github.com/bejayjones/juno/internal/sync/recorder"
 )
 
 // InspectionRepository persists Inspection aggregates in SQLite.
 type InspectionRepository struct {
-	db *db.DB
+	db       *db.DB
+	recorder *recorder.Recorder
 }
 
 func NewInspectionRepository(database *db.DB) *InspectionRepository {
 	return &InspectionRepository{db: database}
 }
 
+// WithRecorder enables sync recording for this repository.
+func (r *InspectionRepository) WithRecorder(rec *recorder.Recorder) *InspectionRepository {
+	r.recorder = rec
+	return r
+}
+
 // Save upserts the entire Inspection aggregate tree within a single transaction.
 func (r *InspectionRepository) Save(ctx context.Context, insp *domain.Inspection) error {
 	return r.db.WithTx(ctx, func(tx *sql.Tx) error {
-		return saveInspection(tx, insp)
+		if err := saveInspection(tx, insp); err != nil {
+			return err
+		}
+		return r.recorder.Record(ctx, tx, "inspections", string(insp.ID), "upsert", insp)
 	})
 }
 
@@ -276,8 +287,12 @@ func (r *InspectionRepository) FindByInspector(
 
 // Delete removes an inspection and all its children (cascade).
 func (r *InspectionRepository) Delete(ctx context.Context, id domain.InspectionID) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM inspections WHERE id = ?`, string(id))
-	return err
+	return r.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM inspections WHERE id = ?`, string(id)); err != nil {
+			return err
+		}
+		return r.recorder.Record(ctx, tx, "inspections", string(id), "delete", nil)
+	})
 }
 
 // ── Scan helpers ─────────────────────────────────────────────────────────────

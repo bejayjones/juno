@@ -71,6 +71,11 @@ func (s *Server) registerRoutes(r chi.Router) {
 			r.Post("/reports/{id}/deliver", s.handleDeliverReport)
 			r.Get("/reports/{id}/deliveries", s.handleListDeliveries)
 			r.Post("/reports/{id}/deliveries/retry", s.handleRetryDeliveries)
+
+			// Sync.
+			r.Get("/sync/status", s.handleSyncStatus)
+			r.Post("/sync/push", s.handleSyncPush)
+			r.Get("/sync/pull", s.handleSyncPull)
 		})
 	})
 

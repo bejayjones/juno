@@ -9,15 +9,23 @@ import (
 
 	"github.com/bejayjones/juno/internal/platform/db"
 	"github.com/bejayjones/juno/internal/reporting/domain"
+	"github.com/bejayjones/juno/internal/sync/recorder"
 )
 
 // ReportRepository persists Report aggregates in SQLite.
 type ReportRepository struct {
-	db *db.DB
+	db       *db.DB
+	recorder *recorder.Recorder
 }
 
 func NewReportRepository(database *db.DB) *ReportRepository {
 	return &ReportRepository{db: database}
+}
+
+// WithRecorder enables sync recording for this repository.
+func (r *ReportRepository) WithRecorder(rec *recorder.Recorder) *ReportRepository {
+	r.recorder = rec
+	return r
 }
 
 // Save upserts the Report and replaces its Deliveries within a single transaction.
@@ -77,7 +85,7 @@ func (r *ReportRepository) Save(ctx context.Context, report *domain.Report) erro
 				return err
 			}
 		}
-		return nil
+		return r.recorder.Record(ctx, tx, "reports", string(report.ID), "upsert", report)
 	})
 }
 
@@ -152,15 +160,17 @@ func (r *ReportRepository) FindByInspector(ctx context.Context, inspectorID doma
 }
 
 func (r *ReportRepository) Delete(ctx context.Context, id domain.ReportID) error {
-	result, err := r.db.ExecContext(ctx, `DELETE FROM reports WHERE id = ?`, string(id))
-	if err != nil {
-		return err
-	}
-	n, _ := result.RowsAffected()
-	if n == 0 {
-		return domain.ErrReportNotFound
-	}
-	return nil
+	return r.db.WithTx(ctx, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, `DELETE FROM reports WHERE id = ?`, string(id))
+		if err != nil {
+			return err
+		}
+		n, _ := result.RowsAffected()
+		if n == 0 {
+			return domain.ErrReportNotFound
+		}
+		return r.recorder.Record(ctx, tx, "reports", string(id), "delete", nil)
+	})
 }
 
 // scanner covers both *sql.Row and *sql.Rows.

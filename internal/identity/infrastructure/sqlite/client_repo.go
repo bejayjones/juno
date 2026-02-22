@@ -9,34 +9,47 @@ import (
 
 	"github.com/bejayjones/juno/internal/identity/domain"
 	"github.com/bejayjones/juno/internal/platform/db"
+	"github.com/bejayjones/juno/internal/sync/recorder"
 )
 
 type ClientRepository struct {
-	db *db.DB
+	db       *db.DB
+	recorder *recorder.Recorder
 }
 
 func NewClientRepository(database *db.DB) *ClientRepository {
 	return &ClientRepository{db: database}
 }
 
+// WithRecorder enables sync recording for this repository.
+func (r *ClientRepository) WithRecorder(rec *recorder.Recorder) *ClientRepository {
+	r.recorder = rec
+	return r
+}
+
 func (r *ClientRepository) Save(ctx context.Context, client *domain.Client) error {
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO clients
-			(id, company_id, first_name, last_name, email, phone, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			first_name = excluded.first_name,
-			last_name  = excluded.last_name,
-			email      = excluded.email,
-			phone      = excluded.phone,
-			updated_at = excluded.updated_at
-	`,
-		string(client.ID), string(client.CompanyID),
-		client.Name.First, client.Name.Last,
-		client.Email, client.Phone,
-		client.CreatedAt.Unix(), client.UpdatedAt.Unix(),
-	)
-	return err
+	return r.db.WithTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO clients
+				(id, company_id, first_name, last_name, email, phone, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				first_name = excluded.first_name,
+				last_name  = excluded.last_name,
+				email      = excluded.email,
+				phone      = excluded.phone,
+				updated_at = excluded.updated_at
+		`,
+			string(client.ID), string(client.CompanyID),
+			client.Name.First, client.Name.Last,
+			client.Email, client.Phone,
+			client.CreatedAt.Unix(), client.UpdatedAt.Unix(),
+		)
+		if err != nil {
+			return fmt.Errorf("upsert client: %w", err)
+		}
+		return r.recorder.Record(ctx, tx, "clients", string(client.ID), "upsert", client)
+	})
 }
 
 func (r *ClientRepository) FindByID(ctx context.Context, id domain.ClientID) (*domain.Client, error) {
@@ -104,8 +117,12 @@ func (r *ClientRepository) FindByCompany(ctx context.Context, companyID domain.C
 }
 
 func (r *ClientRepository) Delete(ctx context.Context, id domain.ClientID) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM clients WHERE id = ?`, string(id))
-	return err
+	return r.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM clients WHERE id = ?`, string(id)); err != nil {
+			return err
+		}
+		return r.recorder.Record(ctx, tx, "clients", string(id), "delete", nil)
+	})
 }
 
 func scanClient(row *sql.Row) (*domain.Client, error) {

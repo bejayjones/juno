@@ -10,42 +10,55 @@ import (
 
 	"github.com/bejayjones/juno/internal/platform/db"
 	"github.com/bejayjones/juno/internal/scheduling/domain"
+	"github.com/bejayjones/juno/internal/sync/recorder"
 )
 
 // AppointmentRepository persists Appointment aggregates in SQLite.
 type AppointmentRepository struct {
-	db *db.DB
+	db       *db.DB
+	recorder *recorder.Recorder
 }
 
 func NewAppointmentRepository(database *db.DB) *AppointmentRepository {
 	return &AppointmentRepository{db: database}
 }
 
+// WithRecorder enables sync recording for this repository.
+func (r *AppointmentRepository) WithRecorder(rec *recorder.Recorder) *AppointmentRepository {
+	r.recorder = rec
+	return r
+}
+
 func (r *AppointmentRepository) Save(ctx context.Context, a *domain.Appointment) error {
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO appointments
-			(id, inspector_id, client_id, street, city, state, zip, country,
-			 scheduled_at, estimated_duration_min, status, notes, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			street                 = excluded.street,
-			city                   = excluded.city,
-			state                  = excluded.state,
-			zip                    = excluded.zip,
-			country                = excluded.country,
-			scheduled_at           = excluded.scheduled_at,
-			estimated_duration_min = excluded.estimated_duration_min,
-			status                 = excluded.status,
-			notes                  = excluded.notes,
-			updated_at             = excluded.updated_at
-	`,
-		string(a.ID), string(a.InspectorID), string(a.ClientID),
-		a.Property.Street, a.Property.City, a.Property.State, a.Property.Zip, a.Property.Country,
-		a.ScheduledAt.Unix(), a.EstimatedDurationMin,
-		string(a.Status), a.Notes,
-		a.CreatedAt.Unix(), a.UpdatedAt.Unix(),
-	)
-	return err
+	return r.db.WithTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO appointments
+				(id, inspector_id, client_id, street, city, state, zip, country,
+				 scheduled_at, estimated_duration_min, status, notes, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				street                 = excluded.street,
+				city                   = excluded.city,
+				state                  = excluded.state,
+				zip                    = excluded.zip,
+				country                = excluded.country,
+				scheduled_at           = excluded.scheduled_at,
+				estimated_duration_min = excluded.estimated_duration_min,
+				status                 = excluded.status,
+				notes                  = excluded.notes,
+				updated_at             = excluded.updated_at
+		`,
+			string(a.ID), string(a.InspectorID), string(a.ClientID),
+			a.Property.Street, a.Property.City, a.Property.State, a.Property.Zip, a.Property.Country,
+			a.ScheduledAt.Unix(), a.EstimatedDurationMin,
+			string(a.Status), a.Notes,
+			a.CreatedAt.Unix(), a.UpdatedAt.Unix(),
+		)
+		if err != nil {
+			return fmt.Errorf("upsert appointment: %w", err)
+		}
+		return r.recorder.Record(ctx, tx, "appointments", string(a.ID), "upsert", a)
+	})
 }
 
 func (r *AppointmentRepository) FindByID(ctx context.Context, id domain.AppointmentID) (*domain.Appointment, error) {
@@ -111,18 +124,22 @@ func (r *AppointmentRepository) FindByInspector(ctx context.Context, inspectorID
 }
 
 func (r *AppointmentRepository) Delete(ctx context.Context, id domain.AppointmentID) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM appointments WHERE id = ?`, string(id))
-	return err
+	return r.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM appointments WHERE id = ?`, string(id)); err != nil {
+			return err
+		}
+		return r.recorder.Record(ctx, tx, "appointments", string(id), "delete", nil)
+	})
 }
 
 func scanAppointment(row *sql.Row) (*domain.Appointment, error) {
 	var (
-		id, inspectorID, clientID             string
-		street, city, state, zip, country     string
-		scheduledAt                           int64
-		durationMin                           int
-		status, notes                         string
-		createdAt, updatedAt                  int64
+		id, inspectorID, clientID         string
+		street, city, state, zip, country string
+		scheduledAt                       int64
+		durationMin                       int
+		status, notes                     string
+		createdAt, updatedAt              int64
 	)
 	err := row.Scan(
 		&id, &inspectorID, &clientID,
