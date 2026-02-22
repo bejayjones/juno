@@ -318,6 +318,55 @@ export const clients = {
 	delete: (id: string) => del<void>(`/clients/${id}`)
 };
 
+// ─── Report types ─────────────────────────────────────────────────────────────
+
+export interface DeliveryView {
+	id: string;
+	recipient_email: string;
+	status: 'pending' | 'succeeded' | 'failed';
+	attempts: number;
+	sent_at?: number;
+	failure_reason?: string;
+	created_at: number;
+	updated_at: number;
+}
+
+export interface ReportView {
+	id: string;
+	inspection_id: string;
+	inspector_id: string;
+	status: 'draft' | 'finalized';
+	pdf_storage_path?: string;
+	generated_at?: number;
+	deliveries: DeliveryView[];
+	created_at: number;
+	updated_at: number;
+}
+
+// ─── Reports API ───────────────────────────────────────────────────────────────
+
+export const reports = {
+	generate: (inspectionId: string) =>
+		post<ReportView>('/reports', { inspection_id: inspectionId }),
+
+	list: (params?: { limit?: number; offset?: number }) => {
+		const q = new URLSearchParams();
+		if (params?.limit) q.set('limit', String(params.limit));
+		if (params?.offset) q.set('offset', String(params.offset));
+		const qs = q.toString();
+		return get<ReportView[]>(`/reports${qs ? '?' + qs : ''}`);
+	},
+
+	get: (id: string) => get<ReportView>(`/reports/${id}`),
+	finalize: (id: string) => put<ReportView>(`/reports/${id}/finalize`, {}),
+
+	deliver: (id: string, recipientEmail: string) =>
+		post<DeliveryView>(`/reports/${id}/deliver`, { recipient_email: recipientEmail }),
+
+	retryDeliveries: (id: string) =>
+		post<ReportView>(`/reports/${id}/deliveries/retry`, {})
+};
+
 // ─── Inspections API ──────────────────────────────────────────────────────────
 
 export const inspections = {
