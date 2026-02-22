@@ -208,6 +208,7 @@
 
 		<!-- Deficiency summary -->
 		{#if deficiencies.length > 0}
+			{@const grouped = deficienciesBySystem()}
 			<div class="mb-4 rounded-xl border border-slate-700 bg-slate-800">
 				<div class="border-b border-slate-700 px-4 py-3">
 					<p class="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -220,7 +221,6 @@
 
 				<!-- Per-system counts -->
 				<div class="flex flex-wrap gap-2 border-b border-slate-700 px-4 py-3">
-					{@const grouped = deficienciesBySystem()}
 					{#each [...grouped.entries()] as [systemType, items]}
 						<a
 							href="/inspections/{report.inspection_id}?system={systemType}"

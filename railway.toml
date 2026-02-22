@@ -1,0 +1,13 @@
+[build]
+# Railway detects the Dockerfile automatically; this is explicit for clarity.
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Railway injects $PORT; the app reads SERVER_PORT.
+# Set all other env vars in the Railway dashboard.
+startCommand = "./juno"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
