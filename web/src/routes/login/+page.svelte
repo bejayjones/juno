@@ -89,5 +89,10 @@
 				{loading ? 'Signing in…' : 'Sign in'}
 			</button>
 		</form>
+
+		<p class="mt-6 text-center text-sm text-slate-500">
+			Don't have an account?
+			<a href="/register" class="font-medium text-blue-400 hover:text-blue-300">Create one</a>
+		</p>
 	</div>
 </div>
