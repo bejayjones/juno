@@ -54,6 +54,19 @@ export interface LoginResponse {
 	expires_at: number;
 }
 
+// ─── Client types ─────────────────────────────────────────────────────────────
+
+export interface ClientView {
+	id: string;
+	company_id: string;
+	first_name: string;
+	last_name: string;
+	email: string;
+	phone: string;
+	created_at: number;
+	updated_at: number;
+}
+
 // ─── Appointment types ────────────────────────────────────────────────────────
 
 export interface AppointmentView {
@@ -192,4 +205,40 @@ export const appointments = {
 		}
 	) => put<AppointmentView>(`/appointments/${id}`, body),
 	cancel: (id: string) => del<void>(`/appointments/${id}`)
+};
+
+// ─── Clients API ──────────────────────────────────────────────────────────────
+
+export const clients = {
+	list: (params?: { search?: string; limit?: number }) => {
+		const q = new URLSearchParams();
+		if (params?.search) q.set('search', params.search);
+		if (params?.limit) q.set('limit', String(params.limit));
+		const qs = q.toString();
+		return get<ClientView[]>(`/clients${qs ? '?' + qs : ''}`);
+	},
+	get: (id: string) => get<ClientView>(`/clients/${id}`),
+	create: (body: { first_name: string; last_name: string; email: string; phone?: string }) =>
+		post<ClientView>('/clients', body),
+	update: (id: string, body: { first_name?: string; last_name?: string; email?: string; phone?: string }) =>
+		put<ClientView>(`/clients/${id}`, body),
+	delete: (id: string) => del<void>(`/clients/${id}`)
+};
+
+// ─── Inspections API ──────────────────────────────────────────────────────────
+
+export interface InspectionView {
+	id: string;
+	appointment_id: string;
+	inspector_id: string;
+	status: 'in_progress' | 'completed';
+	started_at: number;
+	completed_at?: number;
+}
+
+export const inspections = {
+	start: (appointmentId: string) =>
+		post<InspectionView>('/inspections', { appointment_id: appointmentId }),
+	get: (id: string) => get<InspectionView>(`/inspections/${id}`),
+	list: () => get<InspectionView[]>('/inspections')
 };
