@@ -88,6 +88,78 @@ export interface AppointmentView {
 	updated_at: number;
 }
 
+// ─── Inspection types ─────────────────────────────────────────────────────────
+
+export interface HeaderView {
+	weather: string;
+	temperature_f: number;
+	attendees: string[];
+	year_built: number;
+	structure_type: string;
+}
+
+export interface ProgressView {
+	addressed: number;
+	total: number;
+}
+
+export interface PhotoRefView {
+	id: string;
+	storage_path: string;
+	mime_type: string;
+	captured_at: number;
+}
+
+export interface FindingView {
+	id: string;
+	narrative: string;
+	is_deficiency: boolean;
+	photos: PhotoRefView[];
+	created_at: number;
+	updated_at: number;
+}
+
+export interface ItemView {
+	id: string;
+	item_key: string;
+	label: string;
+	status: '' | 'I' | 'NI' | 'NP' | 'D';
+	not_inspected_reason: string;
+	findings: FindingView[];
+	updated_at: number;
+}
+
+export interface SystemSectionView {
+	id: string;
+	system_type: string;
+	system_label: string;
+	descriptions: Record<string, string>;
+	items: ItemView[];
+	inspector_notes: string;
+	progress: ProgressView;
+	updated_at: number;
+}
+
+export interface InspectionView {
+	id: string;
+	appointment_id: string;
+	inspector_id: string;
+	status: 'in_progress' | 'completed' | 'voided';
+	header: HeaderView;
+	systems: SystemSectionView[];
+	started_at: number;
+	completed_at?: number;
+}
+
+export interface DeficiencyView {
+	system_type: string;
+	system_label: string;
+	item_key: string;
+	item_label: string;
+	finding_id: string;
+	narrative: string;
+}
+
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
 function getToken(): string | null {
@@ -110,17 +182,38 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 	if (!res.ok) {
 		const err = await res.json().catch(() => ({ error: res.statusText }));
-		throw new ApiError(res.status, err.error ?? res.statusText);
+		throw new ApiError(res.status, err.error ?? res.statusText, err.fields);
 	}
 
 	if (res.status === 204) return undefined as T;
 	return res.json() as Promise<T>;
 }
 
+async function postMultipart<T>(path: string, formData: FormData): Promise<T> {
+	const headers: Record<string, string> = {};
+	const token = getToken();
+	if (token) headers['Authorization'] = `Bearer ${token}`;
+	// Do NOT set Content-Type — browser sets it with the multipart boundary.
+
+	const res = await fetch(`${BASE}${path}`, {
+		method: 'POST',
+		headers,
+		body: formData
+	});
+
+	if (!res.ok) {
+		const err = await res.json().catch(() => ({ error: res.statusText }));
+		throw new ApiError(res.status, err.error ?? res.statusText, err.fields);
+	}
+
+	return res.json() as Promise<T>;
+}
+
 export class ApiError extends Error {
 	constructor(
 		public readonly status: number,
-		message: string
+		message: string,
+		public readonly details?: string[]
 	) {
 		super(message);
 	}
@@ -227,18 +320,61 @@ export const clients = {
 
 // ─── Inspections API ──────────────────────────────────────────────────────────
 
-export interface InspectionView {
-	id: string;
-	appointment_id: string;
-	inspector_id: string;
-	status: 'in_progress' | 'completed';
-	started_at: number;
-	completed_at?: number;
-}
-
 export const inspections = {
 	start: (appointmentId: string) =>
 		post<InspectionView>('/inspections', { appointment_id: appointmentId }),
 	get: (id: string) => get<InspectionView>(`/inspections/${id}`),
-	list: () => get<InspectionView[]>('/inspections')
+	list: () => get<InspectionView[]>('/inspections'),
+
+	getSystem: (id: string, systemType: string) =>
+		get<SystemSectionView>(`/inspections/${id}/systems/${systemType}`),
+
+	setItemStatus: (
+		id: string,
+		systemType: string,
+		itemKey: string,
+		body: { status: string; reason?: string }
+	) => put<SystemSectionView>(`/inspections/${id}/systems/${systemType}/items/${itemKey}/status`, body),
+
+	setDescriptions: (id: string, systemType: string, descriptions: Record<string, string>) =>
+		put<SystemSectionView>(`/inspections/${id}/systems/${systemType}/descriptions`, descriptions),
+
+	addFinding: (
+		id: string,
+		systemType: string,
+		itemKey: string,
+		body: { narrative: string; is_deficiency: boolean }
+	) => post<FindingView>(`/inspections/${id}/systems/${systemType}/items/${itemKey}/findings`, body),
+
+	updateFinding: (
+		id: string,
+		systemType: string,
+		itemKey: string,
+		findingId: string,
+		body: { narrative: string; is_deficiency: boolean }
+	) =>
+		put<FindingView>(
+			`/inspections/${id}/systems/${systemType}/items/${itemKey}/findings/${findingId}`,
+			body
+		),
+
+	deleteFinding: (id: string, systemType: string, itemKey: string, findingId: string) =>
+		del<void>(`/inspections/${id}/systems/${systemType}/items/${itemKey}/findings/${findingId}`),
+
+	addPhoto: (id: string, systemType: string, itemKey: string, findingId: string, file: File) => {
+		const fd = new FormData();
+		fd.append('finding_id', findingId);
+		fd.append('photo', file);
+		return postMultipart<PhotoRefView>(
+			`/inspections/${id}/systems/${systemType}/items/${itemKey}/photos`,
+			fd
+		);
+	},
+
+	deletePhoto: (id: string, systemType: string, itemKey: string, photoId: string) =>
+		del<void>(`/inspections/${id}/systems/${systemType}/items/${itemKey}/photos/${photoId}`),
+
+	complete: (id: string) => post<InspectionView>(`/inspections/${id}/complete`, {}),
+
+	summary: (id: string) => get<DeficiencyView[]>(`/inspections/${id}/summary`)
 };

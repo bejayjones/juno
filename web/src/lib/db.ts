@@ -1,12 +1,12 @@
 /**
  * Lightweight native IndexedDB wrapper for offline caching.
- * Stores appointments and clients locally so the app works without a network.
+ * Stores appointments, clients, and inspections locally so the app works without a network.
  */
 
-import type { AppointmentView, ClientView } from './api';
+import type { AppointmentView, ClientView, InspectionView } from './api';
 
 const DB_NAME = 'juno';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 function openDB(): Promise<IDBDatabase> {
 	return new Promise((resolve, reject) => {
@@ -19,6 +19,9 @@ function openDB(): Promise<IDBDatabase> {
 			}
 			if (!db.objectStoreNames.contains('clients')) {
 				db.createObjectStore('clients', { keyPath: 'id' });
+			}
+			if (!db.objectStoreNames.contains('inspections')) {
+				db.createObjectStore('inspections', { keyPath: 'id' });
 			}
 		};
 
@@ -87,4 +90,21 @@ export async function cacheClients(items: ClientView[]): Promise<void> {
 export async function getCachedClients(): Promise<ClientView[]> {
 	const db = await openDB();
 	return getAll<ClientView>(db, 'clients');
+}
+
+// ── Inspections ───────────────────────────────────────────────────────────────
+
+export async function cacheInspection(item: InspectionView): Promise<void> {
+	const db = await openDB();
+	await putAll(db, 'inspections', [item]);
+}
+
+export async function getCachedInspection(id: string): Promise<InspectionView | undefined> {
+	const db = await openDB();
+	return getOne<InspectionView>(db, 'inspections', id);
+}
+
+export async function getCachedInspections(): Promise<InspectionView[]> {
+	const db = await openDB();
+	return getAll<InspectionView>(db, 'inspections');
 }
