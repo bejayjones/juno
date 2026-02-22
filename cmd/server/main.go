@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"os"
 
+	"path/filepath"
+
 	"github.com/bejayjones/juno/api/rest"
 	inspectionapp "github.com/bejayjones/juno/internal/inspection/application"
 	inspectionsqlite "github.com/bejayjones/juno/internal/inspection/infrastructure/sqlite"
@@ -12,6 +14,10 @@ import (
 	identityauth "github.com/bejayjones/juno/internal/identity/infrastructure/auth"
 	identitysqlite "github.com/bejayjones/juno/internal/identity/infrastructure/sqlite"
 	"github.com/bejayjones/juno/internal/platform/db"
+	reportingapp "github.com/bejayjones/juno/internal/reporting/application"
+	reportingemail "github.com/bejayjones/juno/internal/reporting/infrastructure/email"
+	reportingpdf "github.com/bejayjones/juno/internal/reporting/infrastructure/pdf"
+	reportingsqlite "github.com/bejayjones/juno/internal/reporting/infrastructure/sqlite"
 	schedulingapp "github.com/bejayjones/juno/internal/scheduling/application"
 	schedulingsqlite "github.com/bejayjones/juno/internal/scheduling/infrastructure/sqlite"
 	"github.com/bejayjones/juno/pkg/clock"
@@ -72,6 +78,19 @@ func main() {
 	inspectionRepo := inspectionsqlite.NewInspectionRepository(database)
 	inspectionSvc := inspectionapp.NewInspectionService(inspectionRepo, photoStore, clk)
 
+	// Reporting infrastructure and service.
+	reportRepo := reportingsqlite.NewReportRepository(database)
+	pdfGen := reportingpdf.NewGenerator()
+	reportsDir := filepath.Join(filepath.Dir(cfg.Storage.LocalPath), "reports")
+
+	var emailSvc reportingapp.EmailSender
+	if cfg.Email.Driver == "smtp" {
+		emailSvc = reportingemail.NewSMTPSender(cfg.Email.SMTPHost, cfg.Email.SMTPPort, cfg.Email.SMTPUser, cfg.Email.SMTPPass)
+	} else {
+		emailSvc = reportingemail.NewQueueOnlySender()
+	}
+	reportSvc := reportingapp.NewReportService(reportRepo, inspectionRepo, pdfGen, emailSvc, reportsDir, clk)
+
 	tokenVerifier := rest.NewJWTAdapter(jwtSvc)
 
 	slog.Info("starting juno",
@@ -81,7 +100,7 @@ func main() {
 		"db_driver", cfg.Database.Driver,
 	)
 
-	srv := rest.NewServer(cfg, database, inspectorSvc, companySvc, clientSvc, appointmentSvc, inspectionSvc, tokenVerifier)
+	srv := rest.NewServer(cfg, database, inspectorSvc, companySvc, clientSvc, appointmentSvc, inspectionSvc, reportSvc, tokenVerifier)
 	if err := srv.Start(); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)

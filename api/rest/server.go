@@ -14,6 +14,7 @@ import (
 	identityapp "github.com/bejayjones/juno/internal/identity/application"
 	identityauth "github.com/bejayjones/juno/internal/identity/infrastructure/auth"
 	"github.com/bejayjones/juno/internal/platform/db"
+	reportingapp "github.com/bejayjones/juno/internal/reporting/application"
 	schedulingapp "github.com/bejayjones/juno/internal/scheduling/application"
 	"github.com/bejayjones/juno/pkg/config"
 	webui "github.com/bejayjones/juno/web"
@@ -29,6 +30,7 @@ type Server struct {
 	clientSvc      *identityapp.ClientService
 	appointmentSvc *schedulingapp.AppointmentService
 	inspectionSvc  *inspectionapp.InspectionService
+	reportSvc      *reportingapp.ReportService
 	tokenVerifier  middleware.TokenVerifier
 }
 
@@ -41,6 +43,7 @@ func NewServer(
 	clientSvc *identityapp.ClientService,
 	appointmentSvc *schedulingapp.AppointmentService,
 	inspectionSvc *inspectionapp.InspectionService,
+	reportSvc *reportingapp.ReportService,
 	tokenVerifier middleware.TokenVerifier,
 ) *Server {
 	s := &Server{
@@ -51,6 +54,7 @@ func NewServer(
 		clientSvc:      clientSvc,
 		appointmentSvc: appointmentSvc,
 		inspectionSvc:  inspectionSvc,
+		reportSvc:      reportSvc,
 		tokenVerifier:  tokenVerifier,
 	}
 	s.router = s.buildRouter()
