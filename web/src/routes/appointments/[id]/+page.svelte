@@ -2,8 +2,8 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { appointments, inspections, type AppointmentView, ApiError } from '$lib/api';
-	import { getCachedAppointment, cacheAppointment } from '$lib/db';
+	import { appointments, inspections, reports, type AppointmentView, ApiError } from '$lib/api';
+	import { getCachedAppointment, cacheAppointment, getCachedInspections } from '$lib/db';
 
 	const id = $derived($page.params.id);
 
@@ -15,7 +15,11 @@
 	// Action state
 	let starting = $state(false);
 	let cancelling = $state(false);
+	let generatingReport = $state(false);
 	let actionError = $state('');
+
+	// Inspection ID (found from cache for completed appointments)
+	let inspectionId = $state<string | null>(null);
 
 	onMount(async () => {
 		try {
@@ -32,6 +36,16 @@
 			}
 		} finally {
 			loading = false;
+			// For completed appointments, find the linked inspection from cache
+			if (appt?.status === 'completed') {
+				try {
+					const cached = await getCachedInspections();
+					const linked = cached.find((i) => i.appointment_id === appt!.id);
+					if (linked) inspectionId = linked.id;
+				} catch {
+					// non-fatal
+				}
+			}
 		}
 	});
 
@@ -45,6 +59,24 @@
 		} catch (err) {
 			actionError = err instanceof ApiError ? err.message : 'Failed to start inspection.';
 			starting = false;
+		}
+	}
+
+	async function generateReport() {
+		if (!inspectionId) return;
+		generatingReport = true;
+		actionError = '';
+		try {
+			const report = await reports.generate(inspectionId);
+			goto(`/reports/${report.id}`);
+		} catch (err) {
+			if (err instanceof ApiError && err.status === 409) {
+				// Report already exists — go to reports list
+				goto('/reports');
+			} else {
+				actionError = err instanceof ApiError ? err.message : 'Failed to generate report.';
+				generatingReport = false;
+			}
 		}
 	}
 
@@ -198,6 +230,28 @@
 					tap-target transition-colors hover:bg-amber-500"
 			>
 				Continue Inspection
+			</a>
+		{/if}
+
+		<!-- Generate Report (completed appointments) -->
+		{#if appt.status === 'completed' && !offline}
+			{#if inspectionId}
+				<button
+					onclick={generateReport}
+					disabled={generatingReport}
+					class="mb-3 w-full rounded-xl bg-blue-600 py-4 text-base font-bold text-white
+						tap-target transition-colors hover:bg-blue-500 active:bg-blue-700
+						disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					{generatingReport ? 'Generating…' : 'Generate Report'}
+				</button>
+			{/if}
+			<a
+				href="/reports"
+				class="mb-3 flex w-full items-center justify-center rounded-xl border border-slate-700
+					bg-slate-800 py-3 text-sm font-medium text-slate-400 tap-target hover:bg-slate-700 hover:text-white"
+			>
+				View All Reports
 			</a>
 		{/if}
 

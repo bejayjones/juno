@@ -21,8 +21,8 @@
 	let error = $state('');
 	let offline = $state(false);
 
-	// ── Navigation ─────────────────────────────────────────────────────────────
-	let activeSystem = $state('roof');
+	// ── Navigation — initialise from ?system= query param for deep-links ───────
+	let activeSystem = $state($page.url.searchParams.get('system') ?? 'roof');
 	let expandedItemKey = $state<string | null>(null);
 
 	// ── Description drafts (keyed by systemType → {descKey → value}) ──────────
