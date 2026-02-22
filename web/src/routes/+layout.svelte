@@ -7,7 +7,7 @@
 
 	let { children } = $props();
 
-	const publicRoutes = ['/login'];
+	const publicRoutes = ['/login', '/register'];
 
 	onMount(() => {
 		// Register service worker.
