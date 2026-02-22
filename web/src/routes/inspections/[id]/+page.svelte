@@ -433,10 +433,10 @@
 		<!-- ── System content (scrollable) ─────────────────────────────────────── -->
 		<main class="flex-1 overflow-y-auto">
 			{#if activeSystemData}
+				{@const descFields = systemDescriptions[activeSystemData.system_type] ?? []}
 				<div class="space-y-0">
 
 					<!-- Required descriptions -->
-					{@const descFields = systemDescriptions[activeSystemData.system_type] ?? []}
 					{#if descFields.length > 0}
 						<section class="border-b border-slate-800 bg-slate-900 px-4 py-4">
 							<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -448,8 +448,9 @@
 							<div class="space-y-3">
 								{#each descFields as field}
 									<div>
-										<label class="mb-1 block text-xs font-medium text-slate-400">{field.label}</label>
+										<label for="desc-{field.key}" class="mb-1 block text-xs font-medium text-slate-400">{field.label}</label>
 										<input
+											id="desc-{field.key}"
 											type="text"
 											disabled={isReadOnly || offline}
 											value={descDrafts[activeSystemData.system_type]?.[field.key] ?? ''}
@@ -534,10 +535,11 @@
 										<!-- NI reason -->
 										{#if item.status === 'NI'}
 											<div>
-												<label class="mb-1 block text-xs font-medium text-slate-400">
+												<label for="ni-reason-{item.item_key}" class="mb-1 block text-xs font-medium text-slate-400">
 													Reason not inspected <span class="text-red-400">*</span>
 												</label>
 												<textarea
+													id="ni-reason-{item.item_key}"
 													rows={2}
 													disabled={isReadOnly || offline}
 													value={item.not_inspected_reason}
@@ -599,7 +601,7 @@
 																	<div class="relative">
 																		<img
 																			src="/api/v1/photos/{photo.id}"
-																			alt="Finding photo"
+																			alt=""
 																			class="h-16 w-16 rounded-lg object-cover border border-slate-700"
 																			loading="lazy"
 																		/>

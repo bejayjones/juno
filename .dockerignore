@@ -1,0 +1,20 @@
+# Build artifacts
+bin/
+web/build/
+web/node_modules/
+
+# Data files (never bake into the image)
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# Git
+.git/
+.gitignore
+
+# Dev tools
+.claude/
+*.md
+ROADMAP.md
+SPEC.md
