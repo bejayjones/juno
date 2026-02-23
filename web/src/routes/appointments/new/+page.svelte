@@ -39,6 +39,51 @@
 		showClientDropdown = false;
 	}
 
+	// ── New client modal ─────────────────────────────────────────────────────
+	let showNewClientModal = $state(false);
+	let newFirstName = $state('');
+	let newLastName = $state('');
+	let newEmail = $state('');
+	let newPhone = $state('');
+	let creatingClient = $state(false);
+	let newClientError = $state('');
+
+	function openNewClientModal() {
+		showClientDropdown = false;
+		newFirstName = '';
+		newLastName = '';
+		newEmail = '';
+		newPhone = '';
+		newClientError = '';
+		showNewClientModal = true;
+	}
+
+	async function handleCreateClient(e: Event) {
+		e.preventDefault();
+		if (!newFirstName.trim() || !newLastName.trim()) {
+			newClientError = 'First and last name are required.';
+			return;
+		}
+		newClientError = '';
+		creatingClient = true;
+		try {
+			const created = await clients.create({
+				first_name: newFirstName.trim(),
+				last_name: newLastName.trim(),
+				email: newEmail.trim(),
+				phone: newPhone.trim()
+			});
+			allClients = [created, ...allClients];
+			await cacheClients(allClients);
+			selectClient(created);
+			showNewClientModal = false;
+		} catch (err) {
+			newClientError = err instanceof ApiError ? err.message : 'Failed to create client.';
+		} finally {
+			creatingClient = false;
+		}
+	}
+
 	// ── Form fields ──────────────────────────────────────────────────────────
 	let street = $state('');
 	let city = $state('');
@@ -138,10 +183,23 @@
 				class="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white
 					placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
 			/>
-			{#if showClientDropdown && clientMatches.length > 0}
+			{#if showClientDropdown}
 				<ul
 					class="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-700 bg-slate-800 shadow-xl"
 				>
+					<!-- Add New Client button — always visible at top -->
+					<li class="border-b border-slate-700">
+						<button
+							type="button"
+							onclick={openNewClientModal}
+							class="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-blue-400 hover:bg-slate-700"
+						>
+							<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+							</svg>
+							Add New Client
+						</button>
+					</li>
 					{#each clientMatches as c (c.id)}
 						<li>
 							<button
@@ -154,12 +212,12 @@
 							</button>
 						</li>
 					{/each}
+					{#if clientSearch.length > 0 && clientMatches.length === 0}
+						<li class="px-4 py-3 text-sm text-slate-400">
+							No clients found.
+						</li>
+					{/if}
 				</ul>
-			{/if}
-			{#if showClientDropdown && clientSearch.length > 0 && clientMatches.length === 0}
-				<div class="absolute z-20 mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-slate-400">
-					No clients found.
-				</div>
 			{/if}
 		</div>
 
@@ -263,3 +321,112 @@
 		</button>
 	</form>
 </div>
+
+<!-- New client modal -->
+{#if showNewClientModal}
+	<div
+		class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Add new client"
+	>
+		<div class="w-full max-w-lg rounded-t-2xl bg-slate-900 p-6 sm:rounded-2xl">
+			<div class="mb-4 flex items-center justify-between">
+				<h3 class="text-lg font-bold text-white">New Client</h3>
+				<button
+					type="button"
+					onclick={() => (showNewClientModal = false)}
+					class="flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white"
+					aria-label="Close"
+				>
+					<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+
+			{#if newClientError}
+				<div class="mb-4 rounded-lg border border-red-800 bg-red-950 px-4 py-3 text-sm text-red-300">
+					{newClientError}
+				</div>
+			{/if}
+
+			<form onsubmit={handleCreateClient} class="space-y-4">
+				<div class="grid grid-cols-2 gap-3">
+					<div>
+						<label for="new-first-name" class="mb-1 block text-sm font-medium text-slate-300">
+							First Name <span class="text-red-400">*</span>
+						</label>
+						<input
+							id="new-first-name"
+							type="text"
+							bind:value={newFirstName}
+							required
+							placeholder="First name"
+							class="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white
+								placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+						/>
+					</div>
+					<div>
+						<label for="new-last-name" class="mb-1 block text-sm font-medium text-slate-300">
+							Last Name <span class="text-red-400">*</span>
+						</label>
+						<input
+							id="new-last-name"
+							type="text"
+							bind:value={newLastName}
+							required
+							placeholder="Last name"
+							class="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white
+								placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+						/>
+					</div>
+				</div>
+
+				<div>
+					<label for="new-email" class="mb-1 block text-sm font-medium text-slate-300">Email</label>
+					<input
+						id="new-email"
+						type="email"
+						bind:value={newEmail}
+						placeholder="client@example.com"
+						class="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white
+							placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+					/>
+				</div>
+
+				<div>
+					<label for="new-phone" class="mb-1 block text-sm font-medium text-slate-300">Phone</label>
+					<input
+						id="new-phone"
+						type="tel"
+						bind:value={newPhone}
+						placeholder="(555) 123-4567"
+						class="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white
+							placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+					/>
+				</div>
+
+				<div class="flex gap-3 pt-2">
+					<button
+						type="button"
+						onclick={() => (showNewClientModal = false)}
+						class="flex-1 rounded-lg border border-slate-700 bg-slate-800 py-3 text-sm font-medium
+							text-slate-400 tap-target transition-colors hover:bg-slate-700 hover:text-white"
+					>
+						Cancel
+					</button>
+					<button
+						type="submit"
+						disabled={creatingClient}
+						class="flex-1 rounded-lg bg-blue-600 py-3 text-sm font-semibold text-white
+							tap-target transition-colors hover:bg-blue-500 active:bg-blue-700
+							disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						{creatingClient ? 'Adding…' : 'Add Client'}
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+{/if}
