@@ -21,7 +21,7 @@
 				last_name: lastName,
 				email,
 				password,
-				company_name: companyName.trim() || undefined
+				company_name: companyName.trim()
 			});
 			authStore.login(res.token, res.expires_at, res.inspector);
 			goto('/');
@@ -126,12 +126,13 @@
 
 			<div>
 				<label for="company-name" class="block text-sm font-medium text-slate-300 mb-1">
-					Company name <span class="text-slate-500 font-normal">(optional)</span>
+					Company name
 				</label>
 				<input
 					id="company-name"
 					type="text"
 					bind:value={companyName}
+					required
 					autocomplete="organization"
 					class="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-white
 						placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"

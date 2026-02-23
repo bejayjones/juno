@@ -27,6 +27,10 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "first_name, last_name, email, and password are required")
 		return
 	}
+	if body.CompanyID == "" && body.CompanyName == "" {
+		respondError(w, http.StatusBadRequest, "company_name is required")
+		return
+	}
 
 	out, err := s.inspectorSvc.Register(r.Context(), application.RegisterInput{
 		FirstName:   body.FirstName,

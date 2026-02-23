@@ -76,7 +76,8 @@
 	onMount(async () => {
 		try {
 			insp = await inspections.get(id);
-			await cacheInspection(insp);
+			// Cache write is best-effort — don't let it mask a successful fetch
+			cacheInspection(insp).catch(() => {});
 		} catch {
 			const cached = await getCachedInspection(id).catch(() => undefined);
 			if (cached) {
